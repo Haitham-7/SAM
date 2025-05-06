@@ -1,0 +1,221 @@
+#!/bin/bash
+
+SSH_CONFIG="$HOME/.ssh/config"
+DEFAULT_USER="root"
+DEFAULT_KEY="$HOME/.ssh/id_rsa"
+
+print_help() {
+    cat <<EOF
+SSH Alias Manager (sam)
+
+Usage:
+  sam -h | --help               Show this help message
+  sam -ls                       List all SSH aliases
+  sam --add [-h IP -a ALIAS]    Add SSH alias (interactive or CLI)
+                                Optional: -u USER -i KEY_PATH
+  sam --remove -a ALIAS         Remove SSH alias
+  sam --edit -a ALIAS           Edit SSH alias (interactive)
+
+Examples:
+  sam --add                     # Prompts interactively
+  sam --add -h 192.168.1.10 -a myserver
+  sam --remove -a myserver
+  sam --edit -a myserver
+EOF
+}
+
+list_aliases() {
+    if [[ -f "$SSH_CONFIG" ]]; then
+        awk '
+        BEGIN {
+            printf "%-25s %-30s\n", "ALIAS", "HOSTNAME/IP"
+            print "-------------------------------------------------------------"
+        }
+        /^Host[[:space:]]+/ {
+            alias=$2
+        }
+        /^ *HostName[[:space:]]+/ {
+            printf "%-25s %-30s\n", alias, $2
+        }
+        ' "$SSH_CONFIG"
+    else
+        echo "No SSH config file found at $SSH_CONFIG"
+    fi
+}
+
+validate_ip() {
+    local ip=$1
+    if [[ ! "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "Error: Invalid IP format."
+        return 1
+    fi
+    for octet in $(echo "$ip" | tr '.' ' '); do
+        [[ $octet -gt 255 ]] && { echo "Error: IP octet $octet out of range"; return 1; }
+    done
+    return 0
+}
+
+validate_key() {
+    local key=$1
+    if [[ ! -f "$key" ]]; then
+        echo "Error: SSH key does not exist at $key"
+        return 1
+    fi
+    local perms
+    perms=$(stat -c "%a" "$key")
+    if [[ "$perms" != "600" ]]; then
+        echo "Warning: SSH key should have permission 600"
+        read -rp "Fix it automatically? [y/N]: " fix
+        [[ "$fix" =~ ^[Yy]$ ]] && chmod 600 "$key"
+    fi
+    return 0
+}
+
+add_alias() {
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -h) HOST="$2"; shift ;;
+            -u) USER="$2"; [[ -z "$USER" ]] && USER="$DEFAULT_USER"; shift ;;
+            -i) KEY_PATH="$2"; [[ -z "$KEY_PATH" ]] && KEY_PATH="$DEFAULT_KEY"; shift ;;
+            -a) ALIAS="$2"; shift ;;
+            *) echo "Unknown argument: $1"; return 1 ;;
+        esac
+        shift
+    done
+
+    # Interactive mode
+    if [[ -z "$HOST" && -z "$ALIAS" ]]; then
+        read -rp "Enter IP address (required): " HOST
+        [[ -z "$HOST" ]] && { echo "IP is required"; return 1; }
+
+        read -rp "Enter username [default: root]: " USER
+        USER="${USER:-$DEFAULT_USER}"
+
+        read -rp "Enter SSH key path [default: $DEFAULT_KEY]: " KEY_PATH
+        KEY_PATH="${KEY_PATH:-$DEFAULT_KEY}"
+
+        read -rp "Enter alias name (required): " ALIAS
+        [[ -z "$ALIAS" ]] && { echo "Alias is required"; return 1; }
+    fi
+
+    [[ -z "$HOST" || -z "$ALIAS" ]] && { echo "Host and alias are required"; return 1; }
+
+    USER="${USER:-$DEFAULT_USER}"
+    KEY_PATH="${KEY_PATH:-$DEFAULT_KEY}"
+
+    validate_ip "$HOST" || return 1
+    validate_key "$KEY_PATH" || return 1
+
+    if grep -qE "^Host\s+$ALIAS" "$SSH_CONFIG" 2>/dev/null; then
+        echo "Alias '$ALIAS' already exists."
+        return 1
+    fi
+
+    {
+        echo ""
+        echo "Host $ALIAS"
+        echo "    HostName $HOST"
+        echo "    User $USER"
+        echo "    IdentityFile $KEY_PATH"
+    } >> "$SSH_CONFIG"
+
+    echo "Alias '$ALIAS' added."
+}
+
+remove_alias() {
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -a) ALIAS="$2"; shift ;;
+            *) echo "Unknown argument: $1"; return 1 ;;
+        esac
+        shift
+    done
+    [[ -z "$ALIAS" ]] && { echo "Alias is required"; return 1; }
+
+    if ! grep -qE "^Host\s+$ALIAS" "$SSH_CONFIG"; then
+        echo "Alias '$ALIAS' not found."
+        return 1
+    fi
+
+    # Use awk to remove the alias block
+    awk -v alias="$ALIAS" '
+        $1 == "Host" && $2 == alias { skip = 1; next }
+        skip && /^Host / { skip = 0 }
+        !skip
+    ' "$SSH_CONFIG" > "${SSH_CONFIG}.tmp" && mv "${SSH_CONFIG}.tmp" "$SSH_CONFIG"
+
+    echo "Alias '$ALIAS' removed."
+}
+
+edit_alias() {
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            -a) ALIAS="$2"; shift ;;
+            *) echo "Unknown argument: $1"; return 1 ;;
+        esac
+        shift
+    done
+    [[ -z "$ALIAS" ]] && { echo "Alias is required"; return 1; }
+
+    if ! grep -qE "^Host\s+$ALIAS" "$SSH_CONFIG"; then
+        echo "Alias '$ALIAS' not found."
+        return 1
+    fi
+
+    # Extract current block
+    ALIAS_BLOCK=$(awk -v alias="$ALIAS" '
+        $1 == "Host" && $2 == alias { print; show = 1; next }
+        show && /^Host / { show = 0 }
+        show { print }
+    ' "$SSH_CONFIG")
+
+    echo "Current alias config:"
+    echo "$ALIAS_BLOCK"
+    echo "---"
+
+    read -rp "Enter new IP address: " HOST
+    [[ -z "$HOST" ]] && { echo "Host is required"; return 1; }
+
+    read -rp "Enter username [default: root]: " USER
+    USER="${USER:-$DEFAULT_USER}"
+
+    read -rp "Enter SSH key path [default: $DEFAULT_KEY]: " KEY_PATH
+    KEY_PATH="${KEY_PATH:-$DEFAULT_KEY}"
+
+    validate_ip "$HOST" || return 1
+    validate_key "$KEY_PATH" || return 1
+
+    # Remove old block
+    awk -v alias="$ALIAS" '
+        $1 == "Host" && $2 == alias { skip = 1; next }
+        skip && /^Host / { skip = 0 }
+        !skip
+    ' "$SSH_CONFIG" > "${SSH_CONFIG}.tmp"
+
+    # Append new block
+    {
+        echo ""
+        echo "Host $ALIAS"
+        echo "    HostName $HOST"
+        echo "    User $USER"
+        echo "    IdentityFile $KEY_PATH"
+    } >> "${SSH_CONFIG}.tmp"
+
+    mv "${SSH_CONFIG}.tmp" "$SSH_CONFIG"
+    echo "Alias '$ALIAS' updated."
+}
+
+# MAIN
+if [[ $# -eq 0 ]]; then
+    print_help
+    exit 1
+fi
+
+case "$1" in
+    -h|--help) print_help ;;
+    -ls) list_aliases ;;
+    --add) shift; add_alias "$@" ;;
+    --remove) shift; remove_alias "$@" ;;
+    --edit) shift; edit_alias "$@" ;;
+    *) echo "Unknown command: $1"; print_help; exit 1 ;;
+esac

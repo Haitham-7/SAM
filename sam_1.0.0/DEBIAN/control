@@ -1,0 +1,9 @@
+Package: sam
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: bash (>= 5.0), zsh
+Maintainer: Haitham Al Daajah - haithamdajah73@gmail.com
+Description: SSH Alias Manager
+ A small CLI utility to manage SSH aliases in ~/.ssh/config interactively or via flags.
