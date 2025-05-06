@@ -17,10 +17,10 @@
 
 ### From Debian package v1.0.0
 
-Download the `sam_1.0.0_all.deb` from the [Releases](https://github.com/Haitham-7/SAM/releases/tag/v1.0.0) page and install:
+Download the `sam_1.0.0.deb` from the [Releases](https://github.com/Haitham-7/SAM/releases/tag/v1.0.0) page and install:
 
 ```bash
-sudo dpkg -i sam_1.0.0_all.deb
+sudo dpkg -i sam_1.0.0.deb
 sudo apt-get install -f    # if any dependencies are missing
 ```
 
@@ -29,7 +29,7 @@ sudo apt-get install -f    # if any dependencies are missing
 ```bash
 git clone https://github.com/Haitham-7/SAM.git
 cd SAM/sam_1.0.0
-sudo dpkg -i sam_1.0.0_all.deb
+sudo dpkg -i sam_1.0.0.deb
 ```
 
 > Or copy the `sam` script to `~/bin` and ensure `~/bin` is in your `$PATH`.
@@ -92,7 +92,7 @@ man sam
 
 ## Contributing
 
-I'll try to maintain it if I can, but don't get your hopes up, your best bit is to fork and edit yourself :) Have Fun! 
+I'll try to maintain it if I can, but don't get your hopes up. Your best option is to fork and edit yourself. Have Fun!
 
 
 ## License
