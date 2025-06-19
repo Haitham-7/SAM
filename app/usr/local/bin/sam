@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+
+# Config override
+SSH_CONFIG="${SAM_CONFIG:-$HOME/.ssh/config}"
+DEFAULT_USER="root"
+DEFAULT_KEY="$HOME/.ssh/id_rsa"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+print_help() {
+  cat <<EOF
+SSH Alias Manager (sam)
+
+Usage:
+  sam -h | --help
+  sam -ls                         List all SSH aliases with details
+  sam --add [-h IP] [-a ALIAS]    Add SSH alias (interactive or CLI)
+       [ -u USER ] [ -i KEY_PATH ]
+  sam --remove -a ALIAS           Remove SSH alias
+  sam --edit -a ALIAS             Edit SSH alias (interactive)
+EOF
+}
+
+backup_config() {
+  cp "$SSH_CONFIG" "${SSH_CONFIG}.bak.$(date +%s)"
+}
+
+list_aliases() {
+  if [[ ! -f "$SSH_CONFIG" ]]; then
+    echo -e "${RED}No SSH config file found at $SSH_CONFIG${NC}"
+    exit 1
+  fi
+  awk '
+  BEGIN {
+    printf "%-20s %-15s %-10s %s
+", "ALIAS", "HOST", "USER", "KEY_PATH"
+    print "--------------------------------------------------------------"
+  }
+  /^Host[[:space:]]+/      { alias=$2 }
+  /^[[:space:]]*HostName/   { host=$2 }
+  /^[[:space:]]*User/       { user=$2 }
+  /^[[:space:]]*IdentityFile/ {
+    key=$2
+    printf "%-20s %-15s %-10s %s
+", alias, host, user, key
+  }
+  ' "$SSH_CONFIG"
+}
+
+validate_ip() {
+  local ip=$1
+  if [[ ! "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo -e "${RED}Error: Invalid IP format.${NC}"
+    exit 1
+  fi
+}
+
+validate_key() {
+  local key=$1 perms
+  if [[ ! -f "$key" ]]; then
+    echo -e "${RED}Error: SSH key not found at $key${NC}"
+    exit 1
+  fi
+  perms=$(stat -c "%a" "$key")
+  if [[ "$perms" != "600" ]]; then
+    echo -e "${YELLOW}Warning: SSH key should be 600${NC}"
+    read -rp "$(echo -e ${YELLOW}Fix permissions? [y/N]:${NC}) " fix
+    [[ "$fix" =~ ^[Yy]$ ]] && chmod 600 "$key"
+  fi
+}
+
+add_alias() {
+  backup_config
+  local HOST ALIAS USER KEY_PATH tmp OPTIND opt
+  USER="$DEFAULT_USER"; KEY_PATH="$DEFAULT_KEY"
+  while getopts ":h:u:i:a:" opt; do
+    case "$opt" in
+      h) HOST=$OPTARG ;;
+      u) USER=${OPTARG:-$DEFAULT_USER} ;;
+      i) KEY_PATH=${OPTARG:-$DEFAULT_KEY} ;;
+      a) ALIAS=$OPTARG ;;
+      *) echo -e "${RED}Invalid option -$OPTARG${NC}"; exit 1 ;;
+    esac
+  done
+  shift $((OPTIND-1))
+  if [[ -z "${HOST:-}" || -z "${ALIAS:-}" ]]; then
+    read -rp "IP (required): " HOST; [[ -z "$HOST" ]] && exit 1
+    read -rp "Username [${DEFAULT_USER}]: " USER; USER=${USER:-$DEFAULT_USER}
+    read -rp "Key Path [${DEFAULT_KEY}]: " KEY_PATH; KEY_PATH=${KEY_PATH:-$DEFAULT_KEY}
+    read -rp "Alias (required): " ALIAS; [[ -z "$ALIAS" ]] && exit 1
+  fi
+  validate_ip "$HOST"; validate_key "$KEY_PATH"
+  if grep -qE "^Host[[:space:]]+$ALIAS" "$SSH_CONFIG"; then
+    echo -e "${RED}Alias $ALIAS exists${NC}"; exit 1
+  fi
+  tmp=$(mktemp)
+  cat "$SSH_CONFIG" > "$tmp"
+  {
+    echo ""; echo "Host $ALIAS"; echo "  HostName $HOST"
+    echo "  User $USER"; echo "  IdentityFile $KEY_PATH"
+  } >> "$tmp"
+  mv "$tmp" "$SSH_CONFIG"
+  echo -e "${GREEN}Added $ALIAS${NC}"
+}
+
+remove_alias() {
+  backup_config
+  local ALIAS tmp opt
+  while getopts ":a:" opt; do
+    case "$opt" in a) ALIAS=$OPTARG ;; *) exit 1 ;; esac
+  done
+  [[ -z "${ALIAS:-}" ]] && exit 1
+  tmp=$(mktemp)
+  awk -v alias="$ALIAS" '$1=="Host"&&$2==alias{skip=1;next} skip&&/^Host/{skip=0} !skip' "$SSH_CONFIG" > "$tmp"
+  mv "$tmp" "$SSH_CONFIG"
+  echo -e "${GREEN}Removed $ALIAS${NC}"
+}
+
+edit_alias() {
+  backup_config
+  local ALIAS HOST USER KEY_PATH tmp opt
+  USER="$DEFAULT_USER"; KEY_PATH="$DEFAULT_KEY"
+  while getopts ":a:" opt; do
+    case "$opt" in a) ALIAS=$OPTARG ;; *) exit 1 ;; esac
+  done
+  [[ -z "${ALIAS:-}" ]] && exit 1
+  echo "Current config:"; awk -v a="$ALIAS" '$1=="Host"&&$2==a{show=1} show&&/^Host/{exit} show' "$SSH_CONFIG"
+  read -rp "New IP (required): " HOST; [[ -z "$HOST" ]] && exit 1
+  read -rp "Username [${DEFAULT_USER}]: " USER; USER=${USER:-$DEFAULT_USER}
+  read -rp "Key Path [${DEFAULT_KEY}]: " KEY_PATH; KEY_PATH=${KEY_PATH:-$DEFAULT_KEY}
+  validate_ip "$HOST"; validate_key "$KEY_PATH"
+  tmp=$(mktemp)
+  awk -v a="$ALIAS" '$1=="Host"&&$2==a{skip=1;next} skip&&/^Host/{skip=0} !skip' "$SSH_CONFIG" > "$tmp"
+  {
+    echo ""; echo "Host $ALIAS"; echo "  HostName $HOST"
+    echo "  User $USER"; echo "  IdentityFile $KEY_PATH"
+  } >> "$tmp"
+  mv "$tmp" "$SSH_CONFIG"
+  echo -e "${GREEN}Updated $ALIAS${NC}"
+}
+
+# MAIN
+[[ $# -eq 0 ]] && print_help && exit 0
+case "$1" in
+  -h|--help) print_help ;;
+  -ls) list_aliases ;;
+  --add) shift; add_alias "$@" ;;
+  --remove) shift; remove_alias "$@" ;;
+  --edit) shift; edit_alias "$@" ;;
+  *) echo -e "${RED}Unknown: $1${NC}"; print_help; exit 1 ;;
+esac
