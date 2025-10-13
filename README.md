@@ -1,94 +1,82 @@
-# SAM (SSH Alias Manager) v1.0.0
+#  SAM (SSH Alias Manager)
 
-`SAM` (SSH Alias Manager) is a lightweight CLI tool for managing SSH aliases in your `~/.ssh/config` file with ease. It provides interactive prompts, flag-based commands, IP/hostname validation, and SSH key permission checks. Out of the box it includes Zsh tab-completion and a man page.
+`SAM` is a modern, self-contained **Bash CLI tool** for managing SSH aliases directly from your `~/.ssh/config`.  
+It supports **listing**, **adding**, **editing**, **removing**, and **connecting** to aliases, all with smart parsing, validation, and safety features.
 
-## Features
+---
 
-* **List aliases** with IP/hostname: `sam -ls`
-* **Add alias** (interactive or via flags): `sam --add [-h IP] [-a ALIAS] [-u USER] [-i KEY_PATH]`
-* **Edit alias**: `sam --edit -a ALIAS`
-* **Remove alias**: `sam --remove -a ALIAS`
-* **Validation** for IP format and SSH key existence & permissions
-* **Zsh autocompletion** support
-* **Man page** (`sam(1)`) for detailed usage reference
-* Packaged as a **Debian `.deb`** for easy install (v1.0.0)
+## ✨ Features
 
-## Installation
+ ### **Smart SSH Config Expansion**  
+  Expands `Include` directives automatically into a temporary merged config for accurate parsing.
 
-### From Debian package v1.0.0
+ ### **Rich, Tabular Listing**  
+  Displays alias, host, user, key path, and port in a formatted table with automatic indexing.
 
-Download the `sam_1.0.0.deb` from the [Releases](https://github.com/Haitham-7/SAM/releases/tag/v1.0.0) page and install:
+ ### **Index-based SSH Access**  
+  Connect instantly without typing the alias name.
 
-```bash
-sudo dpkg -i sam_1.0.0.deb
-sudo apt-get install -f    # if any dependencies are missing
-```
+ ### **Add / Edit / Remove Aliases**  
+  - Fully interactive or CLI flag-based control  
+  - Automatically backs up your SSH config before every modification  
+  - Prevents unsafe edits to included configs
 
-### From source
+ ### **Additional Features**  
+  - Creates timestamped backups (`~/.ssh/config.bak.<timestamp>`)  
+  - Validates host/IP format  
+  - Checks key existence and permissions (`chmod 600`)  
+  - Offers auto-fix for insecure keys
+  - Honors `$SAM_CONFIG` for custom config paths  
+  - Overrides included file entries safely by appending new Host blocks
 
+---
+
+## 📦 Installation
+
+From source:
 ```bash
 git clone https://github.com/Haitham-7/SAM.git
-cd SAM/sam_1.0.0
-sudo dpkg -i sam_1.0.0.deb
+cd SAM
+chmod +x sam
+sudo mv sam /usr/local/bin/sam   # or put it anywhere on your $PATH
 ```
 
-> Or copy the `sam` script to `~/bin` and ensure `~/bin` is in your `$PATH`.
+##  Usage
 
-## Usage
-
-Display help:
-
+List all aliases with effective details + indices
 ```bash
-sam --help
+sam ls
 ```
-
-List all aliases with their hostnames/IPs:
-
+SSH into the 3rd alias from the list
 ```bash
-sam -ls
+sam ssh 3
 ```
-
-Add a new alias (interactive):
-
+Add alias (interactive)
 ```bash
-sam --add
+sam add
 ```
-
-Add via flags:
-
+Add alias via flags
+```bash 
+sam add -h 192.168.1.10 -u ubuntu -i ~/.ssh/id_rsa -a web-server
+```
+Edit alias by name (interactive)
 ```bash
-sam --add -h 192.168.1.10 -a web-vm -u ubuntu -i ~/.ssh/id_rsa
+sam edit -a web-server
 ```
-
-Edit an existing alias:
-
+Edit alias by index (interactive)
 ```bash
-sam --edit -a web-vm
+sam edit 2
 ```
-
-Remove an alias:
-
+Remove alias by name
 ```bash
-sam --remove -a web-vm
+sam remove -a web-server
 ```
-
-## Zsh Autocompletion
-
-The `_sam` completion script is installed to `/usr/share/zsh/site-functions/`. To enable it:
-
+Remove alias by index
 ```bash
-autoload -U compinit && compinit
+sam remove 2
 ```
 
-Pressing `TAB` after `sam --` will list available flags.
-
-## Man Page
-
-View the manual with:
-
-```bash
-man sam
-```
+---
 
 ## Contributing
 
