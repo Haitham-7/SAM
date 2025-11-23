@@ -1,11 +1,11 @@
 #  SAM (SSH Alias Manager)
 
-`SAM` is a modern, self-contained **Bash CLI tool** for managing SSH aliases directly from your `~/.ssh/config`.  
+`SAM` is a simple, self-contained **Bash CLI tool** for managing SSH aliases directly from your `~/.ssh/config`.  
 It supports **listing**, **adding**, **editing**, **removing**, and **connecting** to aliases, all with smart parsing, validation, and safety features.
 
 ---
 
-## ✨ Features
+##  Features
 
  ### **Smart SSH Config Expansion**  
   Expands `Include` directives automatically into a temporary merged config for accurate parsing.
@@ -31,7 +31,7 @@ It supports **listing**, **adding**, **editing**, **removing**, and **connecting
 
 ---
 
-## 📦 Installation
+##  Installation
 
 From source:
 ```bash
